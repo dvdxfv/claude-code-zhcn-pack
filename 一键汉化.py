@@ -13,8 +13,9 @@ Claude Code 插件一键汉化
   3. 应用 UI 字符串汉化(精确替换 + 锚定替换)
   4. 应用 UI 补漏(设置/对话框/模板字符串等展示文案)
   5. 注入斜杠命令中文描述(改渲染钩子 + 智能 ID 匹配 + 中文命令表)
-  6. node --check 语法校验(防白屏)
-  7. 可选 --audit: 跑命令覆盖审计 + UI 串缺口审计
+  6. 注入 CLI spinner 汉化(写 ~/.claude/settings.json,187 动词 + 41 提示)
+  7. node --check 语法校验(防白屏)
+  8. 可选 --audit: 跑命令覆盖审计 + UI 串缺口审计
 """
 import os, sys, glob, subprocess, shutil, json, argparse
 
@@ -114,12 +115,15 @@ def main():
         "注入斜杠命令中文描述")
     os.remove(precmd)  # 清理临时基线
 
-    # 5) 语法校验
+    # 5) 注入 CLI spinner 汉化(写 ~/.claude/settings.json,只增不覆盖)
+    run(f'{node_cmd} apply-spinner.cjs --merge', "注入 CLI spinner(187 动词 + 41 提示)")
+
+    # 6) 语法校验
     run(f'{node_cmd} --check "{target}"', "语法校验")
 
     print("\n✅ 汉化完成！Ctrl+Shift+P → Developer: Reload Window 生效")
 
-    # 6) 可选审计
+    # 7) 可选审计
     if args.audit:
         print()
         run("python audit-命令汉化覆盖.py", "覆盖审计")
