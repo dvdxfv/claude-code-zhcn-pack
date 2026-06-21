@@ -16,7 +16,7 @@ $script:mainScript = Join-Path $script:here "一键汉化.py"
 
 # ---- 窗口 ----
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Claude Code 扩展汉化 · 安装器"
+$form.Text = "Claude Code 扩展汉化 · 启动器"
 $form.Size = New-Object System.Drawing.Size(720, 540)
 $form.StartPosition = "CenterScreen"
 $form.MinimumSize = New-Object System.Drawing.Size(640, 480)
@@ -24,7 +24,7 @@ $form.BackColor = [System.Drawing.Color]::FromArgb(248, 250, 252)
 
 # 标题
 $lblTitle = New-Object System.Windows.Forms.Label
-$lblTitle.Text = "Claude Code 扩展汉化工具"
+$lblTitle.Text = "Claude Code 扩展汉化 · 启动器"
 $lblTitle.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 14, [System.Drawing.FontStyle]::Bold)
 $lblTitle.Location = New-Object System.Drawing.Point(20, 16)
 $lblTitle.Size = New-Object System.Drawing.Size(680, 32)
