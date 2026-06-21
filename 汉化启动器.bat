@@ -1,9 +1,34 @@
 @echo off
-REM Claude Code 扩展汉化 · Windows 启动器
-REM 双击本文件调起 Python 跑一键汉化.py(TUI 模式)
-REM 关闭黑窗口 = 中断当前步骤(脚本不会继续跑)
-title Claude Code 扩展汉化 · 启动器
-python 一键汉化.py --tui --audit
+REM Claude Code localization launcher. ASCII-only on purpose:
+REM Chinese text in an executable line gets corrupted by cmd.exe's
+REM GBK code page on Chinese-locale Windows even with chcp 65001,
+REM so this file avoids non-ASCII bytes entirely and finds the
+REM (Chinese-named) entry script dynamically via the OS file list.
+chcp 65001 >nul
+cd /d "%~dp0"
+
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] python was not found in PATH.
+    echo Install Python 3 and make sure "python" works from a terminal.
+    pause
+    exit /b 1
+)
+
+set SCRIPT=
+for %%F in (*.py) do set SCRIPT=%%F
+if not defined SCRIPT (
+    echo [ERROR] No .py entry script found in this folder.
+    echo Make sure this file stays in the cloned repo root.
+    pause
+    exit /b 1
+)
+
+echo Found script: %SCRIPT%
+echo Starting localization...
 echo.
-echo === 汉化脚本已结束,按任意键关闭窗口 ===
+python "%SCRIPT%" --tui --audit
+
+echo.
+echo Done. Press any key to close this window.
 pause >nul
