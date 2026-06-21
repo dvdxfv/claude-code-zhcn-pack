@@ -3,9 +3,23 @@
 // Usage: node inject-斜杠命令说明.cjs <baseBackup> <mapJson> <target>
 
 const fs = require("fs");
+const path = require("path");
 const [, , basePath, mapPath, targetPath] = process.argv;
 
-const map = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+const officialMap = JSON.parse(fs.readFileSync(mapPath, "utf8"));
+
+// 本机专属译表(由 auto-translate-gaps.py 调 claude CLI 自动翻译产出,不进 git,
+// 跟 mapPath 同目录)。每台机器装的第三方技能不同,这份表只覆盖"这台机器上
+// 扫到、且本机翻译过"的命令,跟公共译表合并后参与注入。公共译表优先(若两边
+// 都有同一个 key,以公共译表为准)。
+const localMapPath = path.join(path.dirname(mapPath), "斜杠命令-中文说明.本机.json");
+const localMap = fs.existsSync(localMapPath)
+  ? JSON.parse(fs.readFileSync(localMapPath, "utf8"))
+  : {};
+const map = { ...localMap, ...officialMap };
+if (Object.keys(localMap).length) {
+  console.log(`本机译表: ${localMapPath}（${Object.keys(localMap).length} 条，已合并）`);
+}
 
 // 补充 webview 专属命令 ID → 中文（无对应 CLI 命令的，手译）
 const WEBVIEW_EXTRAS = {

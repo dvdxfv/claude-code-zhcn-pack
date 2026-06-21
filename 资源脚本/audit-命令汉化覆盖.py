@@ -114,9 +114,30 @@ def parse_frontmatter(path):
         return None, None
     fm = m.group(1)
     nm = re.search(r'^name:\s*(.+)$', fm, re.M)
-    dm = re.search(r'^description:\s*(.+)$', fm, re.M)
     name = nm.group(1).strip().strip('"\'') if nm else None
-    desc = re.split(r'[。\.\n]', dm.group(1).strip().strip('"\''))[0][:120] if dm else ""
+
+    # description 可能是单行,也可能是 YAML 块标量(description: > 折叠式 /
+    # description: | 字面式),块标量时真实内容在后续缩进行里,
+    # 不在 "description:" 同一行——之前的单行正则会把 ">"/"|" 本身当成描述。
+    dm = re.search(r'^description:[ \t]*(.*)$', fm, re.M)
+    desc = ""
+    if dm:
+        first = dm.group(1).strip()
+        if first in (">", "|", ">-", "|-", ">+", "|+", ""):
+            block = []
+            for line in fm[dm.end():].split("\n"):
+                if not line.strip():
+                    if block:
+                        break
+                    continue
+                if re.match(r'^[ \t]+\S', line):
+                    block.append(line.strip())
+                else:
+                    break
+            desc = " ".join(block)
+        else:
+            desc = first.strip('"\'')
+    desc = re.split(r'[。\.\n]', desc)[0][:120] if desc else ""
     return name, desc
 
 def extract_skills(skills_dir):
@@ -132,6 +153,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", default=None)
     ap.add_argument("--map", default=os.path.join(here, "斜杠命令-中文说明.json"))
+    ap.add_argument("--local-map", default=os.path.join(here, "斜杠命令-中文说明.本机.json"),
+                    help="本机专属译表(AI 自动翻译产出，不进 git)，覆盖率计算会合并它")
     ap.add_argument("--skills", default=os.path.expanduser("~/.claude/skills"))
     ap.add_argument("--plugin-skills", default=os.path.expanduser("~/.claude/plugins/cache"),
                     help="插件目录（含 superpowers 等第三方技能），递归扫 SKILL.md")
@@ -149,7 +172,10 @@ def main():
         allcmds.setdefault(k, {"desc": v, "hidden": False, "src": "manual", "aliases": []})
 
     zh = json.load(open(args.map, encoding="utf-8"))
-    zh_keys = set(zh.keys())
+    local_zh = {}
+    if os.path.isfile(args.local_map):
+        local_zh = json.load(open(args.local_map, encoding="utf-8"))
+    zh_keys = set(zh.keys()) | set(local_zh.keys())
 
     def covered(name, info):
         if name in zh_keys:
@@ -165,7 +191,9 @@ def main():
 
     print("=" * 60)
     print(f"claude 二进制 : {binpath}")
-    print(f"中文表        : {args.map}（{len(zh)} 条）")
+    print(f"中文表(公共) : {args.map}（{len(zh)} 条）")
+    if local_zh:
+        print(f"中文表(本机) : {args.local_map}（{len(local_zh)} 条，AI 翻译产出，不进 git）")
     print("=" * 60)
     nb = sum(1 for v in visible.values() if v["src"] == "builtin")
     ns = sum(1 for v in visible.values() if v["src"] == "skill")
