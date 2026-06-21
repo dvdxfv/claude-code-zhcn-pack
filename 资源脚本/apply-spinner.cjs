@@ -4,23 +4,36 @@
 // 基于 KongBai1145/claude-code-zh-cn @ MIT 的思路,术语表用我们的翻译清单。
 //
 // 用法:
-//   node apply-spinner.cjs --merge            写入/合并(默认,幂等)
-//   node apply-spinner.cjs --remove           移除本工具注入的 4 个 key,恢复备份
-//   node apply-spinner.cjs --dry-run          只打印要做什么,不真写
+//   node apply-spinner.cjs --merge                  写入/合并(默认,幂等)
+//   node apply-spinner.cjs --remove                 移除本工具注入的 4 个 key,恢复备份
+//   node apply-spinner.cjs --dry-run                只打印会做什么,不真写(默认动作 merge)
+//   node apply-spinner.cjs --remove --dry-run       只打印会移除什么,不真删
+//
+// --dry-run 和 --remove/--merge 是两个独立维度(只读预览 vs 真实动作),
+// 可以任意组合传参,--dry-run 永远只读不写。
 //
 // 设计要点:
 //   - 只增不覆盖:用户已有的其他 key 一律不动
 //   - 幂等:重复跑结果字节级一致
 //   - 可逆:--merge 前自动备份为 settings.json.bak-<timestamp>
 //   - 移除:--remove 删除注入的 4 个 key,还原备份
+//
+// settings.json 里 spinnerVerbs / spinnerTipsOverride 的形状已用真实
+// 用户报错案例核实(anthropics/claude-code issue #33379):
+//   spinnerVerbs        = {mode:"replace", verbs:[...]}   ← 对象,不是裸数组
+//   spinnerTipsOverride = {excludeDefault:true, tips:[...]} ← tips 是纯字符串数组,不是 {id,text}
 
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+// --dry-run 和 --remove/--merge 是两个独立维度(动作 vs 是否真写),
+// 不能用单一三元表达式合并判断,否则 --remove --dry-run 同传会被
+// 误判成 mode="remove" 直接真删(--dry-run 形同虚设,真实 bug)。
 const args = process.argv.slice(2);
-const mode = args.includes("--remove") ? "remove" :
-             args.includes("--dry-run") ? "dry-run" : "merge";
+const isDryRun = args.includes("--dry-run");
+const isRemove = args.includes("--remove");
+const action = isRemove ? "remove" : "merge";
 
 // 文件路径
 const HERE = path.dirname(process.argv[1]);
@@ -90,12 +103,12 @@ function doMerge() {
   console.log(`   已有 key: ${Object.keys(before).length} 个(${Object.keys(before).join(", ") || "空"})`);
 
   // dry-run:只打印,不写
-  if (mode === "dry-run") {
+  if (isDryRun) {
     console.log("\n[dry-run] 将合并以下 4 个 key:");
     console.log(`  language            = "Chinese"`);
     console.log(`  spinnerTipsEnabled  = true`);
-    console.log(`  spinnerVerbs        = [${verbs.length} 条]`);
-    console.log(`  spinnerTipsOverride = {excludeDefault: true, tips: [${tips.length} 条]}`);
+    console.log(`  spinnerVerbs        = {mode:"replace", verbs:[${verbs.length} 条]}`);
+    console.log(`  spinnerTipsOverride = {excludeDefault:true, tips:[${tips.length} 条字符串]}`);
     console.log("\n不修改任何文件。");
     return;
   }
@@ -110,13 +123,20 @@ function doMerge() {
   }
 
   // 合并(只增不覆盖,但本工具自己的 4 个 key 永远用新值,以保持幂等)
+  //
+  // 形状依据官方真实 schema(已用真实用户的 settings.json 报错案例核实,
+  // 见 anthropics/claude-code issue #33379):
+  //   spinnerVerbs        是对象 {mode, verbs},不是裸数组——
+  //     之前误把 KongBai1145 项目里 {mode,verbs} 的外层拆掉只留了数组,
+  //     这正是 Cursor 内置插件报 "Expected object, but received array" 的根因。
+  //   spinnerTipsOverride.tips 是纯字符串数组,不是 {id,text} 对象数组。
   const after = { ...before };
   after.language = "Chinese";
   after.spinnerTipsEnabled = true;
-  after.spinnerVerbs = verbs;
+  after.spinnerVerbs = { mode: "replace", verbs: verbs };
   after.spinnerTipsOverride = {
     excludeDefault: true,
-    tips: tips.map(t => ({ id: t.id, text: t.text })),
+    tips: tips.map(t => t.text),
   };
 
   atomicWrite(SETTINGS_JSON, JSON.stringify(after, null, 2) + "\n");
@@ -147,7 +167,7 @@ function doRemove() {
   }
 
   // dry-run
-  if (mode === "dry-run") {
+  if (isDryRun) {
     const toRemove = INJECTED_KEYS.filter(k => k in before);
     console.log(`[dry-run] 将从 ${SETTINGS_JSON} 移除:`);
     console.log(`  ${toRemove.join("\n  ")}`);
@@ -178,6 +198,6 @@ function doRemove() {
   }
 }
 
-console.log(`[apply-spinner.cjs] mode=${mode}`);
-if (mode === "remove") doRemove();
+console.log(`[apply-spinner.cjs] action=${action}${isDryRun ? " (dry-run)" : ""}`);
+if (action === "remove") doRemove();
 else doMerge();
