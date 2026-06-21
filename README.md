@@ -16,7 +16,7 @@
 **前置**：装了 Claude Code 扩展、装了 `node`（装了 claude CLI 一般就有）、Python 3。
 
 ```bash
-# 第 1 步：克隆仓库
+# 第 1 步：克隆/fork 仓库
 git clone https://github.com/dvdxfv/claude-code-zhcn-pack
 cd claude-code-zhcn-pack
 
@@ -26,13 +26,44 @@ python 一键汉化.py --audit
 # 第 3 步：到 Cursor/VS Code 里按 Ctrl+Shift+P → Developer: Reload Window
 ```
 
-**Windows 嫌命令行的麻烦**：直接双击 `汉化启动器.bat`，会弹一个黑窗口带 TUI 进度条（纯 stdlib，无第三方依赖）。**注意：它只是 `一键汉化.py --tui` 的窗口壳**，并不是"安装"什么东西——你 clone 下来的东西就是全部。
+**是的，fork 了之后双击启动器就是一键汉化**——`汉化启动器.bat`（Windows）只是 `一键汉化.py --tui --audit` 的窗口壳，没有"安装"这一步，clone/fork 下来的东西就是全部，跑完直接生效。
+
+---
+
+## 汉化前想先看一眼会改什么？
+
+两种方式，都不需要先跑一键汉化：
+
+1. **直接打开译表看**——所有改动内容都是**人类可读的明文 JSON**，跑脚本前随时能打开看：
+   - 界面文字译表：`资源脚本/map1~4-*.json`
+   - 命令描述译表：`资源脚本/斜杠命令-中文说明.json`
+   - CLI spinner 译表：`资源脚本/spinner-verbs-zh.json`、`spinner-tips-zh.json`
+   - 术语约定：[翻译清单.md](翻译清单.md)
+
+2. **跑一次预览模式**——完整走一遍翻译流程，但只写到临时文件，**不碰真实的 `index.js` / `index.js.orig` / `~/.claude/settings.json`**：
+
+   ```bash
+   python 一键汉化.py --preview --audit
+   ```
+
+   跑完会告诉你预览文件在哪（`<扩展>/webview/index.preview-scratch.js`），你可以打开它跟原版 diff，确认没问题后再去掉 `--preview` 正式跑。CLI spinner 那一步在预览模式下自动改用 `--dry-run`，同样不写真实 `settings.json`。
+
+---
+
+## 汉化完了，如果觉得某条翻译不对怎么办？
+
+1. **找到错译的位置**：翻译条目都在明文 JSON 里，按英文原文搜对应文件即可定位（如 `grep -r "你觉得不对的英文" 资源脚本/`）。
+2. **改译文**：直接编辑对应的 `map*.json` / `斜杠命令-中文说明.json` / `spinner-*.json`。
+3. **重跑**：`python 一键汉化.py --audit`。
+
+   脚本是**幂等**的——每次都从 `index.js.orig`（真·英文原版）重新生成，不会在旧的错误翻译上"叠加"修改，改完译表直接重跑就是干净结果，不需要先手动还原。
+4. **想验证改对了再上线**：先 `python 一键汉化.py --preview` 看一眼，确认无误再去掉 `--preview` 正式跑。
 
 ---
 
 ## 卸载 / 还原
 
-任何时候想回到英文原版：
+任何时候想完全回到英文原版：
 
 ```bash
 # 1) 还原扩展界面
@@ -54,7 +85,7 @@ node 资源脚本/apply-spinner.cjs --remove
 
 | 文件 | 作用 |
 |---|---|
-| `一键汉化.py` | **入口脚本**：定位扩展 → 备份 → 应用译表 → 校验 → 注入 CLI → 审计。跑这一条就完事 |
+| `一键汉化.py` | **入口脚本**：定位扩展 → 备份 → 应用译表 → 校验 → 注入 CLI → 审计。支持 `--preview`（只写临时文件，不碰真实文件） |
 | `汉化启动器.bat` | Windows TUI 启动器（双击弹窗），**只是 `一键汉化.py --tui` 的窗口壳** |
 | `资源脚本/` | 7 个 apply/inject/audit 脚本 + 8 个译表(展开见下) |
 | [操作指南.md](操作指南.md) | 完整 SOP：原理、每一步、坑、故障排查、译表维护工作流（**面向译表贡献者**） |
