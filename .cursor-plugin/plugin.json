@@ -1,0 +1,19 @@
+{
+  "name": "claude-code-zhcn",
+  "version": "0.1.0",
+  "description": "把 Cursor / VS Code 里的 Claude Code 扩展界面从英文改成中文。一键脚本：自动定位扩展 → 备份原版 → 替换界面文字 → 注入斜杠命令中文描述 → 语法校验 → 覆盖审计。",
+  "author": {
+    "name": "claude-code-zhcn contributors",
+    "url": "https://github.com/your-org/claude-code-zhcn-pack"
+  },
+  "keywords": [
+    "claude-code",
+    "i18n",
+    "chinese",
+    "localization",
+    "cursor-extension",
+    "vscode-extension"
+  ],
+  "logo": "",
+  "primaryColor": "#D97706"
+}

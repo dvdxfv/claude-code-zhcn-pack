@@ -1,0 +1,23 @@
+{
+  "Continue in Terminal to change output style?": "在终端中继续以更改输出风格？",
+  "Continue in Terminal to configure agents?": "在终端中继续以配置智能体？",
+  "Continue in Terminal to configure hooks?": "在终端中继续以配置钩子？",
+  "Continue in Terminal to edit memory?": "在终端中继续以编辑记忆？",
+  "Continue in Terminal to manage permissions?": "在终端中继续以管理权限？",
+  "Continue in Terminal to manage plugins?": "在终端中继续以管理插件？",
+  "After installing plugins, reload this extension to use them here.": "安装插件后，重新加载本扩展即可在这里使用。",
+  "After making changes, exit Claude in Terminal, and reload the IDE extension to use them here.": "改完后，退出终端里的 Claude，并重新加载 IDE 扩展即可在这里使用。",
+  "Once agents are configured in Terminal, you can reload this extension and ask Claude to use them here.": "在终端中配置好智能体后，重新加载本扩展，就能在这里让 Claude 使用它们。",
+  "Once configured, memories will be picked up by Claude Code here in your IDE.": "配置好后，Claude Code 会在你 IDE 里读取这些记忆。",
+  "Once hooks are configured in this repository, they'll be active in your IDE, too.": "在本仓库配置好钩子后，它们在你 IDE 里也会生效。",
+  "Output style is set via /config. After changing it in Terminal and reloading this extension, you'll be able to use it here.": "输出风格通过 /config 设置；在终端中改好并重新加载本扩展后，就能在这里使用。",
+  "Permission settings are shared between Terminal and this IDE.": "权限设置在终端和本 IDE 之间共享。",
+  "Switch models when a message is flagged": "消息被标记时切换模型",
+  "When safety measures flag a message, automatically switch to a different model to keep chatting. When off, your session will pause instead.": "当安全机制标记某条消息时，自动切换到另一个模型以继续对话；关闭时，会话会改为暂停。",
+  "Manage Claude's memory": "管理 Claude 的记忆",
+  "GitHub repo, URL, or path…": "GitHub 仓库、URL 或路径…",
+  "Refresh and continue": "刷新并继续",
+  "Terminal opened": "终端已打开",
+  "Continue in Terminal": "在终端中继续",
+  "`Continue in Terminal to configure ${e}?`": "`在终端中继续以配置 ${e}？`"
+}

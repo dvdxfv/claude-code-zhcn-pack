@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试/临时
+*.bak
+*.tmp
+*.orig
+*.post-gap
+*.log
+
+# 本地敏感数据(若未来添加)
+.env
+.env.local
