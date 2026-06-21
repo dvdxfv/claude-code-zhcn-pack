@@ -1,4 +1,4 @@
-# Claude Code 扩展中文化（Cursor 插件）
+# Claude Code 扩展中文化
 
 把 Cursor / VS Code 里的 **Claude Code 扩展**界面从英文改成中文的一整套**可复用工具 + 完整 SOP**。
 不是"翻译几个词"，而是按"扫描 → 翻译 → 交叉审 → 执行 → 复审"五阶段流水线，跑一条命令搞定。
@@ -7,30 +7,16 @@
 
 ---
 
-## 安装（3 选 1）
-
-### A. Cursor Marketplace（最简单）
-
-在 Cursor 里 `Ctrl+Shift+P` → 搜 "Extensions: Install Extensions" → 搜 `claude-code-zhcn` → 一键安装。
-安装后**任何项目、任何对话里**，Agent 都自动知道有这套汉化 SOP。
-
-### B. 本地开发模式（推荐用于二次开发）
+## 安装
 
 ```bash
-git clone https://github.com/your-org/claude-code-zhcn-pack
-cd claude-code-zhcn-pack
-# 在 Cursor 里打开本文件夹（File → Open Folder）
-# Agent 会自动加载 skills/claude-code-zhcn/SKILL.md
-```
-
-### C. 一键汉化脚本单独跑（不需要 Cursor 加载技能）
-
-```bash
-git clone https://github.com/your-org/claude-code-zhcn-pack
+git clone https://github.com/dvdxfv/claude-code-zhcn-pack
 cd claude-code-zhcn-pack
 python 一键汉化.py --audit
 # 然后 Cursor/VS Code：Ctrl+Shift+P → Developer: Reload Window
 ```
+
+前置：装了 Claude Code 扩展、装了 `node`（装了 claude CLI 一般就有）、Python 3。
 
 ---
 
@@ -43,32 +29,15 @@ cp <扩展>/webview/index.js.orig <扩展>/webview/index.js
 # 然后 Reload Window
 ```
 
-`<扩展>` 路径通常是 `~/.cursor/extensions/anthropic.claude-code-<版本>-<平台>/`。
+`<扩展>` 路径通常是 `~/.cursor/extensions/anthropic.claude-code-<版本>-<平台>/` 或 `~/.vscode/extensions/anthropic.claude-code-<版本>-<平台>/`。
 
 扩展升级时本工具会被覆盖（汉化失效），重跑 `一键汉化.py` 即可恢复。
 
 ---
 
-## 快速上手
-
-装好之后，在 Cursor 里：
-
-1. 打开 Claude Code 面板（左侧 Claude Code 图标）
-2. 在 Agent 对话框里说："**把 Claude Code 扩展汉化**" 或 "**界面还有英文怎么办**"
-3. Agent 加载本插件的 `SKILL.md` → 跑 5 阶段 SOP → 全部完成
-4. 你执行 `Ctrl+Shift+P → Developer: Reload Window` 验收
-
-或者不用 Agent，直接命令行跑：
-
-```bash
-python 一键汉化.py --audit
-```
-
----
-
 ## 5 阶段工作流
 
-按"扫描 → 翻译 → 交叉审 → 执行 → 复审"五阶段流水线跑。Agent 跑时按顺序，每阶段先告诉用户打算做什么、每阶段后汇报结果。
+按"扫描 → 翻译 → 交叉审 → 执行 → 复审"五阶段流水线跑。任何 Agent（Claude Code / Cursor 内置 / Codeium / ...）拿到本仓库都能按部就班执行。
 
 | 阶段 | 目的 | 主要动作 |
 |---|---|---|
@@ -98,11 +67,9 @@ python 一键汉化.py --audit
 | 文件 | 作用 |
 |---|---|
 | `README.md`（本文件） | 总览 + 安装 + 快速上手 |
-| `操作指南.md` | 完整 SOP：原理、每一步、坑、故障排查 |
-| `翻译清单.md` | 术语表 + 译文约定 + 保留英文清单 |
+| [操作指南.md](操作指南.md) | 完整 SOP：原理、每一步、坑、故障排查 |
+| [翻译清单.md](翻译清单.md) | 术语表 + 译文约定 + 保留英文清单 |
 | `一键汉化.py` | 入口脚本：自动定位扩展 → 备份 → 全部汉化 → 校验 → 审计 |
-| `.cursor-plugin/plugin.json` | Cursor Marketplace 插件元数据 |
-| `skills/claude-code-zhcn/SKILL.md` | Agent 加载入口（指向根 SOP 文档） |
 | `资源脚本/` | 6 个 apply/inject/audit 脚本 + 6 个译表 |
 
 ### 资源脚本
@@ -130,21 +97,8 @@ python 一键汉化.py --audit
 
 ---
 
-## 上架到 Cursor Marketplace
-
-把本仓库打包成 Cursor 官方插件上架，需：
-
-1. 注册 Cursor 开发者账号（[Cursor 官方文档](https://docs.cursor.com)）
-2. 准备图标、截图、README
-3. 用 `cursor-plugin` CLI 打包并提交审核
-4. 审核通过后，用户可在 Marketplace 搜到一键安装
-
-具体流程参考 Cursor 官方插件开发文档。
-
----
-
 ## 复用说明
 
-- 本仓库**自包含**：脚本、译表、SOP、Cursor 插件配置齐全，clone 后即可用。
+- 本仓库**自包含**：脚本、译表、SOP 齐全，clone 后即可用。
 - 别人机器上**唯一可能要调的**是扩展目录（升级后版本号变）——但 `一键汉化.py` 会自动定位最新版，通常无需手动指定。
 - 译表是**可二次编辑的资产**，欢迎按自己口味改译文后重跑脚本。
