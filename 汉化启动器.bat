@@ -25,7 +25,8 @@ if not defined SCRIPT (
 )
 
 echo Found script: %SCRIPT%
-echo Starting localization...
+echo Scanning translation tables and generating a preview list...
+echo (you will be asked to confirm before anything real gets changed)
 echo.
 python "%SCRIPT%" --tui --audit
 

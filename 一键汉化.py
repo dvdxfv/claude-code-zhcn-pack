@@ -4,32 +4,31 @@
 Claude Code 插件一键汉化
 =======================
 用法:
-  python 一键汉化.py [--audit] [--preview] [--ext <扩展目录>] [--tui] [--no-tui]
+  python 一键汉化.py [--audit] [--preview] [--yes|-y] [--ext <扩展目录>] [--tui] [--no-tui]
 
 升级扩展后跑一条命令即可: python 一键汉化.py --audit
 
-可选 --preview: 预览模式,完整跑一遍翻译流程但只写到临时文件,
-   不碰真实的 index.js / index.js.orig / ~/.claude/settings.json。
-   用来在正式汉化前看一眼会发生什么改动(统计 + 可选 diff)。
-可选 --tui: 强制启用终端进度条(默认在交互式终端自动启用)
-   --no-tui: 强制禁用,只用普通 print(便于日志重定向)
+流程分两阶段:
+  阶段一 · 扫描 + 确认(纯终端文本,不进 TUI)
+    1. 定位扩展、读取全部译表
+    2. 生成人类可读的译文清单 汉化预览.md(可交给其他 Agent 交叉审)
+    3. 终端提示确认:输入 y 才真正应用;其它任何输入(含直接 Enter)都视为取消
+       --yes/-y  跳过确认,直接应用
+       --preview 只生成清单,不问、不应用,不碰任何真实文件
 
-步骤:
-  1. 自动定位已安装的 claude-code 扩展(或 --ext 指定)
-  2. 备份原版 index.js 为 index.js.orig(幂等:之后每次从 .orig 还原再重打)
-     [--preview 模式跳过此步,不动真实文件]
-  3. 应用 UI 字符串汉化(精确替换 + 锚定替换)
-  4. 应用 UI 补漏(设置/对话框/模板字符串等展示文案)
-  5. 注入斜杠命令中文描述(改渲染钩子 + 智能 ID 匹配 + 中文命令表)
-  6. 注入 CLI spinner 汉化(写 ~/.claude/settings.json,187 动词 + 41 提示)
-     [--preview 模式改用 --dry-run,不写真实 settings.json]
-  7. node --check 语法校验(防白屏)
-  8. 可选 --audit: 跑命令覆盖审计 + UI 串缺口审计
+  阶段二 · 真实应用(确认通过后才会执行,进 TUI)
+    4. 备份原版 index.js 为 index.js.orig(幂等:之后每次从 .orig 还原再重打)
+    5. 应用 UI 字符串汉化(精确替换 + 锚定替换 + 补漏)
+    6. 注入斜杠命令中文描述(改渲染钩子 + 智能 ID 匹配 + 中文命令表)
+    7. 注入 CLI spinner 汉化(写 ~/.claude/settings.json,187 动词 + 41 提示)
+    8. node --check 语法校验(防白屏)
+    9. 可选 --audit: 跑命令覆盖审计 + UI 串缺口审计
 
 如果汉化结果不满意怎么办(见 README "纠错"一节):
-  1. 改 资源脚本/map*.json、斜杠命令-中文说明.json、spinner-*.json 里的译文
-  2. 重跑本脚本(幂等:从 index.js.orig 重新生成,不会叠加旧改动)
-  3. 想完全恢复英文原版:见 README"卸载/还原"
+  1. 翻 汉化预览.md(或资源脚本/map*.json、斜杠命令-中文说明.json、spinner-*.json)找到错译
+  2. 改对应译表
+  3. 重跑本脚本(幂等:从 index.js.orig 重新生成,不会叠加旧改动)
+  4. 想完全恢复英文原版:见 README"卸载/还原"
 """
 import os, sys, glob, subprocess, shutil, json, argparse, time
 
@@ -38,7 +37,128 @@ RES = os.path.join(HERE, "资源脚本")
 INDEX = "webview/index.js"
 
 # ============================================================
-# TUI 渲染器(纯 stdlib,Windows 10+/macOS/Linux 终端)
+# 阶段一:扫描 + 生成 Markdown 清单 + 终端确认
+# ============================================================
+
+def _read_json(path, default=None):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default if default is not None else {}
+
+def _md_escape(s) -> str:
+    return str(s).replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+def _md_table(pairs, headers=("英文", "中文")) -> str:
+    lines = [f"| {headers[0]} | {headers[1]} |", "|---|---|"]
+    for en, zh in pairs:
+        lines.append(f"| {_md_escape(en)} | {_md_escape(zh)} |")
+    return "\n".join(lines)
+
+def generate_markdown_preview(ext_dir, target):
+    """读取全部译表,生成人类可读的 汉化预览.md。纯读取,不写任何真实扩展文件。"""
+    map1 = _read_json(os.path.join(RES, "map1-主批次.json"))
+    map2 = _read_json(os.path.join(RES, "map2-补充批次.json"))
+    map4 = _read_json(os.path.join(RES, "map4-补漏.json"))
+    cmds = _read_json(os.path.join(RES, "斜杠命令-中文说明.json"))
+    tips = _read_json(os.path.join(RES, "spinner-tips-zh.json"), default=[])
+    verbs = _read_json(os.path.join(RES, "spinner-verbs-zh.json"), default=[])
+
+    counts = [
+        ("扩展 UI 字符串(精确替换)", len(map1)),
+        ("扩展 UI 字符串(锚定替换)", len(map2)),
+        ("扩展 UI 字符串(设置/对话框补漏)", len(map4)),
+        ("斜杠命令描述", len(cmds)),
+        ("CLI spinner 提示", len(tips)),
+        ("CLI spinner 动词(趣味本地化,无对应英文)", len(verbs)),
+    ]
+    total = sum(c for _, c in counts)
+
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    p = []
+    p.append("# Claude Code 汉化预览\n")
+    p.append(
+        f"> 由 `一键汉化.py` 于 {now} 自动生成,列出本次运行**将会**应用的全部翻译。\n"
+        f"> 生成本文件**不会**修改任何真实文件(不动 index.js / index.js.orig / settings.json)。\n>\n"
+        f"> 可以把这份文件交给另一个 Agent(Codex / DeepSeek / 豆包 / Gemini 等)做独立交叉审,\n"
+        f"> 也可以直接看完后回到终端按 `y` 确认应用,按其它键/直接 Enter 取消(不会动任何文件)。\n"
+    )
+    p.append(f"- 扩展目录:`{ext_dir}`")
+    p.append(f"- 目标文件:`{target}`\n")
+
+    p.append("## 摘要\n")
+    p.append("| 类别 | 条数 |")
+    p.append("|---|---|")
+    for name, c in counts:
+        p.append(f"| {name} | {c} |")
+    p.append(f"| **合计** | **{total}** |\n")
+
+    p.append("## 一、扩展 UI 字符串 — 精确替换\n")
+    p.append(f"来源:`资源脚本/map1-主批次.json`,共 {len(map1)} 条。裸字面量/JSX 文本节点替换。\n")
+    p.append(_md_table(map1.items()))
+    p.append("")
+
+    p.append("## 二、扩展 UI 字符串 — 锚定替换\n")
+    p.append(f"来源:`资源脚本/map2-补充批次.json`,共 {len(map2)} 条。只动 `label:`/`title:` 等显示位前缀,更安全。\n")
+    p.append(_md_table(map2.items()))
+    p.append("")
+
+    p.append("## 三、扩展 UI 字符串 — 设置/对话框补漏\n")
+    p.append(f"来源:`资源脚本/map4-补漏.json`,共 {len(map4)} 条。\n")
+    p.append(_md_table(map4.items()))
+    p.append("")
+
+    p.append("## 四、斜杠命令描述\n")
+    p.append(f"来源:`资源脚本/斜杠命令-中文说明.json`,共 {len(cmds)} 条。\n")
+    p.append(_md_table(cmds.items(), headers=("命令", "中文描述")))
+    p.append("")
+
+    p.append("## 五、CLI 终端 — spinner 提示\n")
+    p.append(f"来源:`资源脚本/spinner-tips-zh.json`,共 {len(tips)} 条。写入 `~/.claude/settings.json`。\n")
+    p.append(_md_table([(t.get("id", ""), t.get("text", "")) for t in tips], headers=("ID", "中文提示")))
+    p.append("")
+
+    p.append("## 六、CLI 终端 — spinner 动词(节选)\n")
+    p.append(
+        f"来源:`资源脚本/spinner-verbs-zh.json`,共 {len(verbs)} 条趣味本地化动词"
+        f"(纯装饰性文字,没有对应英文原文,这里只节选前 20 条,完整列表见 JSON 源文件)。\n"
+    )
+    p.append("| 序号 | 中文 |")
+    p.append("|---|---|")
+    for i, v in enumerate(verbs[:20], 1):
+        p.append(f"| {i} | {_md_escape(v)} |")
+    p.append("")
+
+    md = "\n".join(p)
+    out_path = os.path.join(HERE, "汉化预览.md")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(md)
+    return out_path, total, counts
+
+def ask_confirm(total, md_path, auto_yes, preview_only):
+    print(f"\n📋 译文清单已生成:{md_path}")
+    print(f"   共 {total} 条改动,详见上面文件里的摘要表。")
+    if preview_only:
+        print("👀 --preview 模式:只生成清单,不会询问,也不会应用。")
+        return False
+    if auto_yes:
+        print("✅ --yes 已指定,跳过确认,自动继续。")
+        return True
+    if not sys.stdin.isatty():
+        print("⚠ 当前是非交互环境(没有终端可输入),且未指定 --yes,为安全起见不会自动应用。")
+        print("  想跳过确认直接应用:加 --yes;想交互确认:在真实终端里运行本脚本。")
+        return False
+    print("可以先把上面这份 Markdown 交给另一个 Agent 交叉审一遍,再回来确认。")
+    try:
+        ans = input("是否现在应用以上改动?[y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\n已取消。")
+        return False
+    return ans in ("y", "yes")
+
+# ============================================================
+# 阶段二 · TUI 渲染器(纯 stdlib,Windows 10+/macOS/Linux 终端)
 # ============================================================
 # 设计目标:
 #   - 不依赖 rich/curses/blessed 等第三方库
@@ -81,7 +201,6 @@ class TUI:
 
     @staticmethod
     def _vislen(s: str) -> int:
-        """可见宽度估算:跳过 ANSI 转义,中日韩字符计 2 列"""
         n, i = 0, 0
         while i < len(s):
             if s[i] == "\033":
@@ -94,7 +213,6 @@ class TUI:
 
     @staticmethod
     def _clip(s: str, max_width: int) -> str:
-        """按可见宽度截断,保留 ANSI 转义不计入宽度"""
         out, n, i = [], 0, 0
         while i < len(s):
             if s[i] == "\033":
@@ -123,7 +241,7 @@ class TUI:
         if not self.enabled:
             return
         width = self._term_width()
-        safe = width - 1  # 留 1 列安全边界,避免恰好顶满触发自动换行
+        safe = width - 1
 
         elapsed = int(time.time() - self.start_time)
         mins, secs = divmod(elapsed, 60)
@@ -154,8 +272,6 @@ class TUI:
         self._redraw()
 
     def set_pct(self, pct: int):
-        # 当前版本不单独画子进度条(简化布局,避免多元素错位);
-        # 保留方法签名以兼容调用点,仅用于驱动重绘节奏。
         self._redraw()
 
     def log(self, msg: str, kind: str = "info"):
@@ -176,13 +292,12 @@ class TUI:
         self._redraw()
         time.sleep(0.4)
         self._out(self.SHOW_CURSOR)
-        self._out("\033[?1049l")  # 退出备用屏幕,回到主屏幕(不留痕迹)
+        self._out("\033[?1049l")
         if ok:
             print(f"{self.BOLD}{self.GREEN}✅ {msg or '汉化完成'}{self.RESET}")
         else:
             print(f"{self.BOLD}{self.RED}❌ {msg or '失败'}{self.RESET}")
 
-# 全局 TUI(主流程里所有 print 都被它接管)
 _TUI: TUI = None  # type: ignore
 
 def tui_log(msg: str, kind: str = "info"):
@@ -239,12 +354,39 @@ def main():
     ap = argparse.ArgumentParser(description="Claude Code 插件一键汉化")
     ap.add_argument("--audit", action="store_true", help="汉化后跑覆盖审计")
     ap.add_argument("--preview", action="store_true",
-                     help="预览模式:完整跑一遍流程,只写临时文件,不碰真实 index.js/settings.json")
+                     help="只生成译文预览 Markdown,不询问、不应用,不碰任何真实文件")
+    ap.add_argument("--yes", "-y", action="store_true", help="跳过确认提示,直接应用")
     ap.add_argument("--ext", default=None, help="手动指定扩展目录(默认自动定位最新版)")
     ap.add_argument("--tui", action="store_true", help="强制启用终端进度条(交互式终端默认自动启用)")
     ap.add_argument("--no-tui", action="store_true", help="强制禁用 TUI,用普通 print")
     args = ap.parse_args()
 
+    # ---- 阶段一:扫描 + 生成清单 + 确认(纯文本终端,不进 TUI) ----
+    ext_dir = args.ext or find_ext()
+    if not ext_dir or not os.path.isdir(ext_dir):
+        print("❌ 找不到 claude-code 扩展目录,请用 --ext 指定")
+        sys.exit(1)
+
+    target = os.path.join(ext_dir, INDEX)
+    if not os.path.isfile(target):
+        print(f"❌ 目标文件不存在: {target}")
+        sys.exit(1)
+
+    print(f"扩展: {ext_dir}")
+    print(f"目标: {target}")
+    print("正在扫描译表 ...")
+    md_path, total, _counts = generate_markdown_preview(ext_dir, target)
+
+    proceed = ask_confirm(total, md_path, args.yes, args.preview)
+    if not proceed:
+        if args.preview:
+            print(f"\n预览完成,未修改任何真实文件。改完译表满意后,重跑不带 --preview 即可应用。")
+            sys.exit(0)
+        print(f"\n已取消,未修改任何真实文件。译文清单仍保留在 {md_path},"
+              f"可以编辑译表或交给其他 Agent 审完再重跑。")
+        sys.exit(2)
+
+    # ---- 阶段二:真实应用(确认通过,进 TUI) ----
     if args.no_tui:
         tui_enabled = False
     elif args.tui:
@@ -255,60 +397,33 @@ def main():
     _TUI = TUI(tui_enabled)
 
     try:
-        if not tui_enabled:
-            print("预览模式 ..." if args.preview else "扩展汉化开始 ...")
-
-        ext_dir = args.ext or find_ext()
-        if not ext_dir or not os.path.isdir(ext_dir):
-            tui_log("找不到 claude-code 扩展目录,请用 --ext 指定", "err")
-            if _TUI: _TUI.finish(False, "扩展目录未找到")
-            sys.exit(1)
-
-        target = os.path.join(ext_dir, INDEX)
-        if not os.path.isfile(target):
-            tui_log(f"目标文件不存在: {target}", "err")
-            if _TUI: _TUI.finish(False, "目标文件不存在")
-            sys.exit(1)
-
         node = find_node()
         node_cmd = node if node != "node" else "node"
 
         if not tui_enabled:
-            print(f"扩展: {ext_dir}")
-            print(f"目标: {target}")
+            print(f"\n开始应用 ...")
             print(f"node:  {node_cmd}")
             print()
 
+        # 1) 备份/还原基线
+        _TUI.step(1, "备份/还原基线")
         orig = target.replace("index.js", "index.js.orig")
-
-        if args.preview:
-            # 预览模式:绝不碰 index.js / index.js.orig / 真实 settings.json。
-            # 用一份临时副本走完整流程,只看统计输出,跑完即可删除。
-            # 文件名必须保留 .js 后缀(node --check 靠后缀判断语法解析器)。
-            work = target.replace("index.js", "index.preview-scratch.js")
-            baseline = orig if os.path.isfile(orig) else target
-            shutil.copy2(baseline, work)
-            tui_log(f"预览基线: {os.path.basename(baseline)} → {os.path.basename(work)}(临时文件,不影响真实扩展)", "info")
+        if os.path.isfile(orig):
+            shutil.copy2(orig, target)
+            tui_log(f"已从基线还原: {os.path.basename(orig)}", "ok")
         else:
-            work = target
-            if os.path.isfile(orig):
-                shutil.copy2(orig, target)
-                tui_log(f"已从基线还原: {os.path.basename(orig)}", "ok")
-            else:
-                shutil.copy2(target, orig)
-                tui_log(f"已备份原版: {os.path.basename(orig)}", "ok")
-
-        _TUI.step(1, "备份/还原基线" if not args.preview else "准备预览基线")
+            shutil.copy2(target, orig)
+            tui_log(f"已备份原版: {os.path.basename(orig)}", "ok")
 
         # 2) 精确 + 锚定
         _TUI.step(2, "应用 UI 字符串汉化")
-        run_soft(f'{node_cmd} apply-精确.cjs map1-主批次.json "{work}"', "精确替换(主批次)", pct=50)
-        run_soft(f'{node_cmd} apply-锚定.cjs map2-补充批次.json "{work}"', "锚定替换(补充批次)", pct=100)
+        run_soft(f'{node_cmd} apply-精确.cjs map1-主批次.json "{target}"', "精确替换(主批次)", pct=50)
+        run_soft(f'{node_cmd} apply-锚定.cjs map2-补充批次.json "{target}"', "锚定替换(补充批次)", pct=100)
 
         # 3) UI 补漏
         _TUI.step(3, "UI 补漏(设置/对话框)")
-        run(f'python apply-ui补漏.py "{work}" "{work}.post-gap"', "UI 补漏", pct=100)
-        precmd = work + ".post-gap"
+        run(f'python apply-ui补漏.py "{target}" "{target}.post-gap"', "UI 补漏", pct=100)
+        precmd = target + ".post-gap"
         if not os.path.isfile(precmd):
             tui_log("补漏后基线未生成", "err")
             if _TUI: _TUI.finish(False, "补漏失败")
@@ -316,43 +431,35 @@ def main():
 
         # 4) 斜杠命令
         _TUI.step(4, "注入斜杠命令中文描述")
-        run(f'{node_cmd} inject-斜杠命令说明.cjs "{precmd}" 斜杠命令-中文说明.json "{work}"',
+        run(f'{node_cmd} inject-斜杠命令说明.cjs "{precmd}" 斜杠命令-中文说明.json "{target}"',
             "注入斜杠命令", pct=100)
         os.remove(precmd)
 
-        # 5) CLI spinner(预览模式走 --dry-run,不写真实 settings.json)
-        _TUI.step(5, "CLI spinner 汉化" + ("(预览,不写文件)" if args.preview else ""))
-        spinner_flag = "--dry-run" if args.preview else "--merge"
-        run(f'{node_cmd} apply-spinner.cjs {spinner_flag}', "spinner 处理", pct=100)
+        # 5) CLI spinner
+        _TUI.step(5, "注入 CLI spinner 汉化")
+        run(f'{node_cmd} apply-spinner.cjs --merge', "写入 settings.json", pct=100)
 
         # 6) 语法校验
         _TUI.step(6, "node 语法校验")
-        run(f'{node_cmd} --check "{work}"', "语法校验", pct=100)
+        run(f'{node_cmd} --check "{target}"', "语法校验", pct=100)
 
         # 7) 完成基础部分
-        _TUI.step(7, "处理完成")
-        if args.preview:
-            tui_log(f"预览完成,未修改任何真实文件", "ok")
-            tui_log(f"预览结果文件: {work}", "info")
-            tui_log(f"想正式应用:去掉 --preview 重跑;不想保留预览文件可手动删除它", "info")
-        else:
-            tui_log("扩展 + CLI 已汉化", "ok")
-            if not tui_enabled:
-                print("\n✅ 汉化完成!Ctrl+Shift+P → Developer: Reload Window 生效")
+        _TUI.step(7, "汉化完成")
+        tui_log("扩展 + CLI 已汉化", "ok")
+        if not tui_enabled:
+            print("\n✅ 汉化完成!Ctrl+Shift+P → Developer: Reload Window 生效")
 
-        # 8) 可选审计(预览模式下针对临时文件审计,仍不碰真实文件)
+        # 8) 可选审计
         if args.audit:
             _TUI.step(8, "覆盖审计")
-            if not args.preview:
-                run("python audit-命令汉化覆盖.py", "命令覆盖审计", pct=50)
+            run("python audit-命令汉化覆盖.py", "命令覆盖审计", pct=50)
             ui_gap = os.path.join(RES, "audit-ui串缺口.py")
             if os.path.isfile(ui_gap):
-                run(f"python {ui_gap} \"{work}\"", "UI 串缺口审计", pct=100)
+                run(f"python {ui_gap} \"{target}\"", "UI 串缺口审计", pct=100)
             tui_log("命令覆盖率应 ~99%,UI 缺口应仅剩 Monaco 内部串", "info")
 
         if _TUI:
-            msg = "预览完成!未修改任何真实文件" if args.preview else "汉化完成!请按 Ctrl+Shift+P → Developer: Reload Window"
-            _TUI.finish(True, msg)
+            _TUI.finish(True, "汉化完成!请按 Ctrl+Shift+P → Developer: Reload Window")
         else:
             print("\n🎉 全部完成。")
 

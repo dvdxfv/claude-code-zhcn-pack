@@ -27,6 +27,7 @@ desktop.ini
 *.log
 # audit 动态产物
 资源脚本/缺口-待译.json
+汉化预览.md
 
 # 本地敏感数据(若未来添加)
 .env
